@@ -1,11 +1,12 @@
 'use strict';
 // STATICS
 var APP_NAME = 'ds-server';
-var ROOT_FOLDER = '/home/sckmkny/Documents/apps';
 // REQUIREMENTS
+var path = require('path');
 var config = require('config');
 var secret = config.get('secret');
 var adminPassword = config.get('adminpassword');
+var rootFolder = config.get('rootfolder');
 var express = require('express');
 var passport = require('passport');
 var LocalStrategy = require('passport-local').Strategy;
@@ -21,7 +22,7 @@ var glob = require('glob');
 var rimraf = require('rimraf');
 // VARIABLES
 var apps;
-var db = flatfile(ROOT_FOLDER + '/' + APP_NAME + '.db');
+var db = flatfile(path.join(rootFolder,APP_NAME + '.db'));
 var github = new GitHubApi({
   protocol: 'https',
   host: 'api.github.com',
@@ -61,7 +62,7 @@ function handleDbOpen() {
   app.post('/api/update/',
     passport.authenticate('bearer', {session: false}),
     update);
-  app.post('/api/list/',
+  app.get('/api/list/',
     passport.authenticate('bearer', {session: false}),
     list);
   // START
@@ -129,7 +130,7 @@ function handleDbOpen() {
         return res.status(400).send({});
       }
       if (_.findIndex(apps, isRepo) !== -1) {
-        return res.status(404).send({});
+        return res.status(409).send({});
       }
       github.repos.getLatestRelease(
         {user: user, repo: repo},
@@ -177,9 +178,6 @@ function handleDbOpen() {
       if (!validUserRepo(user, repo)) {
         return res.status(400).send({});
       }
-      if (_.findIndex(apps, isRepo) !== -1) {
-        return res.status(404).send({});
-      }
       index = _.findIndex(apps, isRepo);
       if (index === -1) {
         return res.status(404).send({});
@@ -211,9 +209,6 @@ function handleDbOpen() {
       var index;
       if (!validUserRepo(user, repo)) {
         return res.status(400).send({});
-      }
-      if (_.findIndex(apps, isRepo) !== -1) {
-        return res.status(404).send({});
       }
       index = _.findIndex(apps, isRepo);
       if (index === -1) {
@@ -313,17 +308,17 @@ function handleDbOpen() {
           handleError();
       }
       function save(stream) {
-        var tempFileName = ROOT_FOLDER + '/download.zip';
+        var tempFileName = path.join(rootFolder, 'download.zip');
         var tempFile = fs.createWriteStream(tempFileName);
         tempFile.on('finish', handleFinish);
         stream.pipe(tempFile);
         function handleFinish() {
           tempFile.close(handleClose);
           function handleClose() {
-            decompress(tempFileName, ROOT_FOLDER).then(handleDecompress);
+            decompress(tempFileName, rootFolder).then(handleDecompress);
             function handleDecompress() {
               fs.unlink(tempFileName);
-              glob(ROOT_FOLDER + '/' + user + '-' + repo + '*', {}, handleGlob);
+              glob(path.join(rootFolder, user + '-' + repo + '*'), {}, handleGlob);
               function handleGlob(globErr, files) {
                 if (globErr) {
                   callback(500);
@@ -333,7 +328,7 @@ function handleDbOpen() {
                 }
                 fs.rename(
                   files[0],
-                  ROOT_FOLDER + '/' + user + '-' + repo,
+                  path.join(rootFolder,user + '-' + repo),
                   handleRename
                 );
                 function handleRename(renameErr) {
@@ -360,7 +355,7 @@ function handleDbOpen() {
     }
   }
   function remove(user, repo, callback) {
-    rimraf(ROOT_FOLDER + '/' + user + '-' + repo, handleRimRaf);
+    rimraf(path.join(rootFolder, user + '-' + repo), handleRimRaf);
     function handleRimRaf(err) {
       if (err) {
         callback(500);

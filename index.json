@@ -1,0 +1,10 @@
+{
+  "apps": [{
+    "name": "ds-server",
+    "script": "index.js",
+    "env": {
+      "NODE_ENV": "production",
+      "NODE_APP_INSTANCE": "0"
+    }
+  }]
+}
