@@ -13,11 +13,17 @@
   },
   "keywords": [],
   "dependencies": {
+    "config": "^1.21.0",
     "decompress": "^4.0.0",
+    "express": "^4.13.4",
     "flat-file-db": "^1.0.0",
     "github": "^1.1.2",
     "glob": "^7.0.3",
+    "jwt-simple": "^0.5.0",
     "lodash": "^4.13.1",
+    "passport": "^0.3.2",
+    "passport-http-bearer": "^1.0.1",
+    "passport-local": "^1.0.0",
     "rimraf": "^2.5.2"
   },
   "devDependencies": {},
