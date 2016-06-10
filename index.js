@@ -7,9 +7,10 @@ var flatfile = require('flat-file-db');
 var _ = require('lodash');
 var GitHubApi = require('github');
 var https = require('https');
-var unzip = require('unzip');
+var decompress = require('decompress');
 var fs = require('fs');
 var glob = require('glob');
+var rimraf = require('rimraf');
 // VARIABLES
 var apps;
 var db = flatfile(ROOT_FOLDER + '/' + APP_NAME + '.db');
@@ -60,10 +61,7 @@ function install(user, repo) {
     // jscs: disable
     version = getLatestReleaseRes.tag_name;
     // jscs: enable
-    download(
-      {user: user, repo: repo, version: version},
-      handleDownload
-    );
+    download(user, repo, version, handleDownload);
     function handleDownload(downloadErr) {
       if (downloadErr) {
         console.log(downloadErr);
@@ -97,8 +95,15 @@ function uninstall(user, repo) {
     console.log('not installed');
     return;
   }
-  apps.splice(index, 1);
-  db.put('apps', apps);
+  remove(user, repo, handleRemove);
+  function handleRemove(err) {
+    if (err) {
+      console.log('could not remove');
+      return;
+    }
+    apps.splice(index, 1);
+    db.put('apps', apps);
+  }
   function isRepo(obj) {
     return obj.user === user && obj.repo === repo;
   }
@@ -140,8 +145,22 @@ function update(user, repo) {
       console.log('already latest version');
       return;
     }
-    apps[index].version = latestVersion;
-    db.put('apps', apps);
+    remove(user, repo, handleRemove);
+    function handleRemove(removeErr) {
+      if (removeErr) {
+        console.log('could not remove');
+        return;
+      }
+      download(user, repo, latestVersion, handleDownload);
+      function handleDownload(downloadErr) {
+        if (downloadErr) {
+          console.log('could not download');
+          return;
+        }
+        apps[index].version = latestVersion;
+        db.put('apps', apps);
+      }
+    }
   }
   function isRepo(obj) {
     return obj.user === user && obj.repo === repo;
@@ -167,9 +186,7 @@ function validUserRepo(user, repo) {
   }
   return true;
 }
-function download(userRepoVersion, callback) {
-  var user = userRepoVersion.user;
-  var repo = userRepoVersion.repo;
+function download(user, repo, version, callback) {
   var options = {
     hostname: 'api.github.com',
     port: 443,
@@ -178,7 +195,7 @@ function download(userRepoVersion, callback) {
       '/' +
       repo +
       '/zipball/' +
-      userRepoVersion.version,
+      version,
     method: 'GET',
     headers: {
       'User-Agent': APP_NAME
@@ -201,27 +218,36 @@ function download(userRepoVersion, callback) {
         handleError();
     }
     function save(stream) {
-      stream.pipe(unzip.Extract({path: ROOT_FOLDER})
-        .on('close', handleExtractClose));
-      function handleExtractClose() {
-        glob(ROOT_FOLDER + '/' + user + '-' + repo + '*', {}, handleGlob);
-        function handleGlob(globErr, files) {
-          if (globErr) {
-            callback(500);
-          }
-          if (files.length !== 1) {
-            callback(500);
-          }
-          fs.rename(
-            files[0],
-            ROOT_FOLDER + '/' + user + '-' + repo,
-            handleRename
-          );
-          function handleRename(renameErr) {
-            if (renameErr) {
-              callback(500);
-            } else {
-              callback();
+      var tempFileName = ROOT_FOLDER + '/download.zip';
+      var tempFile = fs.createWriteStream(tempFileName);
+      tempFile.on('finish', handleFinish);
+      stream.pipe(tempFile);
+      function handleFinish() {
+        tempFile.close(handleClose);
+        function handleClose() {
+          decompress(tempFileName, ROOT_FOLDER).then(handleDecompress);
+          function handleDecompress() {
+            fs.unlink(tempFileName);
+            glob(ROOT_FOLDER + '/' + user + '-' + repo + '*', {}, handleGlob);
+            function handleGlob(globErr, files) {
+              if (globErr) {
+                callback(500);
+              }
+              if (files.length !== 1) {
+                callback(500);
+              }
+              fs.rename(
+                files[0],
+                ROOT_FOLDER + '/' + user + '-' + repo,
+                handleRename
+              );
+              function handleRename(renameErr) {
+                if (renameErr) {
+                  callback(500);
+                } else {
+                  callback();
+                }
+              }
             }
           }
         }
@@ -238,6 +264,13 @@ function download(userRepoVersion, callback) {
     callback(500);
   }
 }
-function remove(userRepo, callback) {
-  callback(null);
+function remove(user, repo, callback) {
+  rimraf(ROOT_FOLDER + '/' + user + '-' + repo, handleRimRaf);
+  function handleRimRaf(err) {
+    if (err) {
+      callback(500);
+      return;
+    }
+    callback();
+  }
 }
