@@ -183,8 +183,8 @@ function handleDbOpen() {
         return res.status(404).send({});
       }
       remove(user, repo, handleRemove);
-      function handleRemove(err) {
-        if (err) {
+      function handleRemove(removeErr) {
+        if (removeErr) {
           return res.status(500).send({});
         }
         apps.splice(index, 1);
@@ -218,21 +218,22 @@ function handleDbOpen() {
         {user: user, repo: repo},
         handleGetLatestRelease
       );
-      function handleGetLatestRelease(err, res) {
+      function handleGetLatestRelease(getLatestReleaseErr,
+        getLatestReleaseRes) {
         var currentVersion = apps[index].version;
         var latestVersion;
-        if (err) {
-          return res.status(err.code).send({});
+        if (getLatestReleaseErr) {
+          return res.status(getLatestReleaseErr.code).send({});
         }
         // jscs: disable
-        latestVersion = res.tag_name;
+        latestVersion = getLatestReleaseRes.tag_name;
         // jscs: enable
         if (currentVersion === latestVersion) {
           return res.send({});
         }
         remove(user, repo, handleRemove);
-        function handleRemove(err) {
-          if (err) {
+        function handleRemove(handleRemoveErr) {
+          if (handleRemoveErr) {
             return res.status(500).send({});
           }
           download(user, repo, latestVersion, handleDownload);
@@ -318,7 +319,8 @@ function handleDbOpen() {
             decompress(tempFileName, rootFolder).then(handleDecompress);
             function handleDecompress() {
               fs.unlink(tempFileName);
-              glob(path.join(rootFolder, user + '-' + repo + '*'), {}, handleGlob);
+              glob(path.join(rootFolder, user + '-' + repo + '*'),
+                {}, handleGlob);
               function handleGlob(globErr, files) {
                 if (globErr) {
                   callback(500);
@@ -356,8 +358,8 @@ function handleDbOpen() {
   }
   function remove(user, repo, callback) {
     rimraf(path.join(rootFolder, user + '-' + repo), handleRimRaf);
-    function handleRimRaf(err) {
-      if (err) {
+    function handleRimRaf(rimRafErr) {
+      if (rimRafErr) {
         callback(500);
         return;
       }
