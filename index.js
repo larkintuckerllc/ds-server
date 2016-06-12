@@ -20,6 +20,7 @@ var decompress = require('decompress');
 var fs = require('fs');
 var glob = require('glob');
 var rimraf = require('rimraf');
+var multer = require('multer');
 // VARIABLES
 var apps;
 var db = flatfile(path.join(rootFolder,APP_NAME + '.db'));
@@ -30,6 +31,7 @@ var github = new GitHubApi({
     'User-Agent': APP_NAME
   }
 });
+var uploader = multer({dest: path.join(rootFolder,'tmp')});
 // EXECUTION
 db.on('open', handleDbOpen);
 function handleDbOpen() {
@@ -62,7 +64,17 @@ function handleDbOpen() {
   app.post('/api/update/',
     passport.authenticate('bearer', {session: false}),
     update);
-  app.get('/api/list/',
+  app.post('/api/upload/',
+    passport.authenticate('bearer', {session: false}),
+    uploader.single('file'),
+    upload);
+  app.post('/api/delete/',
+    passport.authenticate('bearer', {session: false}),
+    deleteFile);
+  app.post('/api/files/',
+    passport.authenticate('bearer', {session: false}),
+    files);
+  app.post('/api/list/',
     passport.authenticate('bearer', {session: false}),
     list);
   // START
@@ -150,13 +162,20 @@ function handleDbOpen() {
           if (downloadErr) {
             return res.status(500).send({});
           }
-          apps.push({
-            user: user,
-            repo: repo,
-            version: version
-          });
-          db.put('apps', apps);
-          res.send({});
+          fs.mkdir(path.join(rootFolder,
+            user + '-' + repo + '-upload'), handleMkdir);
+          function handleMkdir(mkdirErr) {
+            if (mkdirErr) {
+              return res.status(500).send({});
+            }
+            apps.push({
+              user: user,
+              repo: repo,
+              version: version
+            });
+            db.put('apps', apps);
+            res.send({});
+          }
         }
       }
       function isRepo(obj) {
@@ -187,9 +206,16 @@ function handleDbOpen() {
         if (removeErr) {
           return res.status(500).send({});
         }
-        apps.splice(index, 1);
-        db.put('apps', apps);
-        res.send({});
+        rimraf(path.join(rootFolder, user + '-' + repo + '-upload'),
+          handleRimRaf);
+        function handleRimRaf(rimRafErr) {
+          if (rimRafErr) {
+            return res.status(500).send({});
+          }
+          apps.splice(index, 1);
+          db.put('apps', apps);
+          res.send({});
+        }
       }
       function isRepo(obj) {
         return obj.user === user && obj.repo === repo;
@@ -246,6 +272,132 @@ function handleDbOpen() {
             res.send({});
           }
         }
+      }
+      function isRepo(obj) {
+        return obj.user === user && obj.repo === repo;
+      }
+    }
+  }
+  function upload(req, res) {
+    var _id = req.user;
+    var user = req.body.user;
+    var repo = req.body.repo;
+    if (_id === 'admin') {
+      success();
+    } else {
+      return res.status(401).send({});
+    }
+    function success() {
+      var index;
+      var sourcePath;
+      var source;
+      var destination;
+      var cancel = false;
+      if (!validUserRepo(user, repo)) {
+        return res.status(400).send({});
+      }
+      index = _.findIndex(apps, isRepo);
+      if (index === -1) {
+        return res.status(404).send({});
+      }
+      if (!req.file) {
+        return res.status(404).send({});
+      }
+      sourcePath = req.file.path;
+      source = fs.createReadStream(sourcePath);
+      source.on('error', handleSourceErr);
+      destination = fs.createWriteStream(
+        path.join(rootFolder, user + '-' + repo + '-upload',
+        req.file.originalname));
+      destination.on('error', handleDesinationErr);
+      destination.on('close', handleDestinationClose);
+      source.pipe(destination);
+      function handleSourceErr() {
+        if (!cancel) {
+          cancel = true;
+          return res.status(500).send({});
+        }
+      }
+      function handleDesinationErr() {
+        if (!cancel) {
+          cancel = true;
+          return res.status(500).send({});
+        }
+      }
+      function handleDestinationClose() {
+        if (!cancel) {
+          fs.unlink(sourcePath, handleUnlink);
+        }
+        function handleUnlink(unlinkErr) {
+          if (unlinkErr) {
+            return res.status(500).send({});
+          }
+          res.send({});
+        }
+      }
+      function isRepo(obj) {
+        return obj.user === user && obj.repo === repo;
+      }
+    }
+  }
+  function deleteFile(req, res) {
+    var _id = req.user;
+    var user = req.body.user;
+    var repo = req.body.repo;
+    var file = req.body.file;
+    if (_id === 'admin') {
+      success();
+    } else {
+      return res.status(401).send({});
+    }
+    function success() {
+      if (!validUserRepo(user, repo)) {
+        return res.status(400).send({});
+      }
+      if (file === undefined ||
+        typeof file !== 'string') {
+        return res.status(400).send({});
+      }
+      if (_.findIndex(apps, isRepo) === -1) {
+        return res.status(404).send({});
+      }
+      fs.unlink(path.join(rootFolder,
+        user + '-' + repo + '-upload', file), handleUnlink);
+      function handleUnlink(unlinkErr) {
+        if (unlinkErr) {
+          return res.status(500).send({});
+        }
+        res.send({});
+      }
+      function isRepo(obj) {
+        return obj.user === user && obj.repo === repo;
+      }
+    }
+  }
+  function files(req, res) {
+    var _id = req.user;
+    var user = req.body.user;
+    var repo = req.body.repo;
+    if (_id === 'admin') {
+      success();
+    } else {
+      return res.status(401).send({});
+    }
+    function success() {
+      if (!validUserRepo(user, repo)) {
+        return res.status(400).send({});
+      }
+      if (_.findIndex(apps, isRepo) === -1) {
+        return res.status(404).send({});
+      }
+      fs.readdir(
+        path.join(rootFolder, user + '-' + repo + '-upload'),
+        handleReadDir);
+      function handleReadDir(readDirErr, files) {
+        if (readDirErr) {
+          return res.status(500).send({});
+        }
+        res.send(files);
       }
       function isRepo(obj) {
         return obj.user === user && obj.repo === repo;
@@ -318,26 +470,31 @@ function handleDbOpen() {
           function handleClose() {
             decompress(tempFileName, rootFolder).then(handleDecompress);
             function handleDecompress() {
-              fs.unlink(tempFileName);
-              glob(path.join(rootFolder, user + '-' + repo + '*'),
-                {}, handleGlob);
-              function handleGlob(globErr, files) {
-                if (globErr) {
+              fs.unlink(tempFileName, handleUnlink);
+              function handleUnlink(unlinkErr) {
+                if (unlinkErr) {
                   callback(500);
                 }
-                if (files.length !== 1) {
-                  callback(500);
-                }
-                fs.rename(
-                  files[0],
-                  path.join(rootFolder,user + '-' + repo),
-                  handleRename
-                );
-                function handleRename(renameErr) {
-                  if (renameErr) {
+                glob(path.join(rootFolder, user + '-' + repo + '*'),
+                  {}, handleGlob);
+                function handleGlob(globErr, files) {
+                  if (globErr) {
                     callback(500);
-                  } else {
-                    callback();
+                  }
+                  if (files.length !== 1) {
+                    callback(500);
+                  }
+                  fs.rename(
+                    files[0],
+                    path.join(rootFolder,user + '-' + repo),
+                    handleRename
+                  );
+                  function handleRename(renameErr) {
+                    if (renameErr) {
+                      callback(500);
+                    } else {
+                      callback();
+                    }
                   }
                 }
               }
