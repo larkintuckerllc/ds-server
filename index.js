@@ -1,47 +1,85 @@
 'use strict';
 // STATICS
 var APP_NAME = 'ds-server';
+var BLANK_STARTUP = 'about:blank';
+var REDIRECT_BEGIN = [
+  '<html>',
+  '<head>',
+  '<meta http-equiv="refresh" content="0; URL='
+].join('\n');
+var REDIRECT_END = [
+  '" />',
+  '</head>',
+  '</html>'
+].join('\n');
 // REQUIREMENTS
-var path = require('path');
-var config = require('config');
-var secret = config.get('secret');
-var adminPassword = config.get('adminpassword');
-var rootFolder = config.get('rootfolder');
-var express = require('express');
-var passport = require('passport');
-var LocalStrategy = require('passport-local').Strategy;
-var BearerStrategy = require('passport-http-bearer').Strategy;
-var jwt = require('jwt-simple');
-var flatfile = require('flat-file-db');
 var _ = require('lodash');
-var GitHubApi = require('github');
-var https = require('https');
+var BearerStrategy = require('passport-http-bearer').Strategy;
+var config = require('config');
 var decompress = require('decompress');
+var express = require('express');
+var flatfile = require('flat-file-db');
 var fs = require('fs');
+var GitHubApi = require('github');
 var glob = require('glob');
-var rimraf = require('rimraf');
+var https = require('https');
+var jwt = require('jwt-simple');
+var LocalStrategy = require('passport-local').Strategy;
 var multer = require('multer');
+var passport = require('passport');
+var path = require('path');
+var rimraf = require('rimraf');
 // VARIABLES
+var adminPassword;
 var apps;
-var db = flatfile(path.join(rootFolder,APP_NAME + '.db'));
-var github = new GitHubApi({
-  protocol: 'https',
-  host: 'api.github.com',
-  headers: {
-    'User-Agent': APP_NAME
+var db;
+var rootFolder;
+var secret;
+var startup;
+// INITIALIZE
+adminPassword = config.get('adminpassword');
+rootFolder = config.get('rootfolder');
+secret = config.get('secret');
+fs.mkdir(path.join(rootFolder, 'tmp'), handleTmpMkdir);
+function handleTmpMkdir(tmpMkdirErr) {
+  if (tmpMkdirErr && tmpMkdirErr.code !== 'EEXIST') {
+    process.exit(1);
   }
-});
-var uploader = multer({dest: path.join(rootFolder,'tmp')});
+  db = flatfile(path.join(rootFolder,APP_NAME + '.db'));
+  db.on('open', handleDbOpen);
+  function handleDbOpen() {
+    // NO DOCUMENTED ERROR HANDLING
+    apps = db.get('apps');
+    if (apps === undefined) {
+      apps = [];
+      db.put('apps', apps);
+    }
+    startup = db.get('startup');
+    if (startup === undefined) {
+      writeStartupFile(BLANK_STARTUP, handleInitialWriteFile);
+    } else {
+      ready();
+    }
+    function handleInitialWriteFile(writeStartupFileErr) {
+      if (writeStartupFileErr) {
+        process.exit(1);
+      }
+      startup = BLANK_STARTUP;
+      db.put('startup', startup);
+      ready();
+    }
+  }
+}
 // EXECUTION
-db.on('open', handleDbOpen);
-function handleDbOpen() {
+function ready() {
   var app;
-  // LOAD DATABASE
-  apps = db.get('apps');
-  if (apps === undefined) {
-    apps = [];
-    db.put('apps', apps);
-  }
+  var github = new GitHubApi({
+    protocol: 'https',
+    host: 'api.github.com',
+    headers: {
+      'User-Agent': APP_NAME
+    }
+  });
   // APP SETUP
   app = express();
   app.use(allowCrossDomain);
@@ -66,7 +104,7 @@ function handleDbOpen() {
     update);
   app.post('/api/upload/',
     passport.authenticate('bearer', {session: false}),
-    uploader.single('file'),
+    multer({dest: path.join(rootFolder,'tmp')}).single('file'),
     upload);
   app.post('/api/delete/',
     passport.authenticate('bearer', {session: false}),
@@ -77,6 +115,12 @@ function handleDbOpen() {
   app.post('/api/list/',
     passport.authenticate('bearer', {session: false}),
     list);
+  app.get('/api/startup/',
+    passport.authenticate('bearer', {session: false}),
+    getStartup);
+  app.post('/api/startup/',
+    passport.authenticate('bearer', {session: false}),
+    setStartup);
   // START
   app.listen(3010, listen);
   function allowCrossDomain(req, res, next) {
@@ -130,8 +174,8 @@ function handleDbOpen() {
   }
   function install(req, res) {
     var _id = req.user;
-    var user = req.body.user;
     var repo = req.body.repo;
+    var user = req.body.user;
     if (_id === 'admin') {
       success();
     } else {
@@ -163,9 +207,9 @@ function handleDbOpen() {
             return res.status(500).send({});
           }
           fs.mkdir(path.join(rootFolder,
-            user + '-' + repo + '-upload'), handleMkdir);
-          function handleMkdir(mkdirErr) {
-            if (mkdirErr) {
+            user + '-' + repo + '-upload'), handleUploadMkdir);
+          function handleUploadMkdir(uploadMkdirErr) {
+            if (uploadMkdirErr) {
               return res.status(500).send({});
             }
             apps.push({
@@ -185,8 +229,8 @@ function handleDbOpen() {
   }
   function uninstall(req, res) {
     var _id = req.user;
-    var user = req.body.user;
     var repo = req.body.repo;
+    var user = req.body.user;
     if (_id === 'admin') {
       success();
     } else {
@@ -212,9 +256,17 @@ function handleDbOpen() {
           if (rimRafErr) {
             return res.status(500).send({});
           }
-          apps.splice(index, 1);
-          db.put('apps', apps);
-          res.send({});
+          writeStartupFile(BLANK_STARTUP, handleWriteStartupFile);
+          function handleWriteStartupFile(writeStartupFileErr) {
+            if (writeStartupFileErr) {
+              return res.status(500).send({});
+            }
+            apps.splice(index, 1);
+            db.put('apps', apps);
+            startup = BLANK_STARTUP;
+            db.put('startup', startup);
+            res.send({});
+          }
         }
       }
       function isRepo(obj) {
@@ -224,8 +276,8 @@ function handleDbOpen() {
   }
   function update(req, res) {
     var _id = req.user;
-    var user = req.body.user;
     var repo = req.body.repo;
+    var user = req.body.user;
     if (_id === 'admin') {
       success();
     } else {
@@ -280,19 +332,19 @@ function handleDbOpen() {
   }
   function upload(req, res) {
     var _id = req.user;
-    var user = req.body.user;
     var repo = req.body.repo;
+    var user = req.body.user;
     if (_id === 'admin') {
       success();
     } else {
       return res.status(401).send({});
     }
     function success() {
-      var index;
-      var sourcePath;
-      var source;
-      var destination;
       var cancel = false;
+      var destination;
+      var index;
+      var source;
+      var sourcePath;
       if (!validUserRepo(user, repo)) {
         return res.status(400).send({});
       }
@@ -342,9 +394,9 @@ function handleDbOpen() {
   }
   function deleteFile(req, res) {
     var _id = req.user;
-    var user = req.body.user;
-    var repo = req.body.repo;
     var file = req.body.file;
+    var repo = req.body.repo;
+    var user = req.body.user;
     if (_id === 'admin') {
       success();
     } else {
@@ -376,8 +428,8 @@ function handleDbOpen() {
   }
   function files(req, res) {
     var _id = req.user;
-    var user = req.body.user;
     var repo = req.body.repo;
+    var user = req.body.user;
     if (_id === 'admin') {
       success();
     } else {
@@ -415,6 +467,41 @@ function handleDbOpen() {
       res.send(apps);
     }
   }
+  function getStartup(req, res) {
+    var _id = req.user;
+    if (_id === 'admin') {
+      success();
+    } else {
+      return res.status(401).send({});
+    }
+    function success() {
+      res.send({startup: startup});
+    }
+  }
+  function setStartup(req, res) {
+    var _id = req.user;
+    if (_id === 'admin') {
+      success();
+    } else {
+      return res.status(401).send({});
+    }
+    function success() {
+      var value = req.body.startup;
+      if (value === undefined ||
+        typeof value !== 'string') {
+        return res.status(400).send({});
+      }
+      writeStartupFile(value, handleWriteStartupFile);
+      function handleWriteStartupFile(writeStartupFileErr) {
+        if (writeStartupFileErr) {
+          return res.status(500).send({});
+        }
+        startup = value;
+        db.put('startup', startup);
+        res.send({});
+      }
+    }
+  }
   function listen() {
     console.log('listening on *:3010');
   }
@@ -429,7 +516,8 @@ function handleDbOpen() {
     }
     return true;
   }
-  function download(user, repo, version, callback) {
+  function download(user, repo, version, downloadCallback) {
+    var apiReq;
     var options = {
       hostname: 'api.github.com',
       port: 443,
@@ -444,7 +532,7 @@ function handleDbOpen() {
         'User-Agent': APP_NAME
       }
     };
-    var apiReq = https.request(options, handleAPIRequest);
+    apiReq = https.request(options, handleAPIRequest);
     apiReq.on('error', handleError);
     apiReq.end();
     function handleAPIRequest(apiRes) {
@@ -461,8 +549,9 @@ function handleDbOpen() {
           handleError();
       }
       function save(stream) {
+        var tempFile;
         var tempFileName = path.join(rootFolder, 'download.zip');
-        var tempFile = fs.createWriteStream(tempFileName);
+        tempFile = fs.createWriteStream(tempFileName);
         tempFile.on('finish', handleFinish);
         stream.pipe(tempFile);
         function handleFinish() {
@@ -473,16 +562,16 @@ function handleDbOpen() {
               fs.unlink(tempFileName, handleUnlink);
               function handleUnlink(unlinkErr) {
                 if (unlinkErr) {
-                  callback(500);
+                  downloadCallback(500);
                 }
                 glob(path.join(rootFolder, user + '-' + repo + '*'),
                   {}, handleGlob);
                 function handleGlob(globErr, files) {
                   if (globErr) {
-                    callback(500);
+                    downloadCallback(500);
                   }
                   if (files.length !== 1) {
-                    callback(500);
+                    downloadCallback(500);
                   }
                   fs.rename(
                     files[0],
@@ -491,9 +580,9 @@ function handleDbOpen() {
                   );
                   function handleRename(renameErr) {
                     if (renameErr) {
-                      callback(500);
+                      downloadCallback(500);
                     } else {
-                      callback();
+                      downloadCallback();
                     }
                   }
                 }
@@ -510,17 +599,28 @@ function handleDbOpen() {
       }
     }
     function handleError() {
-      callback(500);
+      downloadCallback(500);
     }
   }
-  function remove(user, repo, callback) {
+  function remove(user, repo, removeCallback) {
     rimraf(path.join(rootFolder, user + '-' + repo), handleRimRaf);
     function handleRimRaf(rimRafErr) {
       if (rimRafErr) {
-        callback(500);
+        removeCallback(500);
         return;
       }
-      callback();
+      removeCallback();
     }
+  }
+}
+function writeStartupFile(value, writeStartupFileCallback) {
+  fs.writeFile(path.join(rootFolder, 'kiosk.html'),
+  REDIRECT_BEGIN + value + REDIRECT_END, handleWriteFile);
+  function handleWriteFile(writeFileErr) {
+    if (writeFileErr) {
+      writeStartupFileCallback(500);
+      return;
+    }
+    writeStartupFileCallback();
   }
 }
