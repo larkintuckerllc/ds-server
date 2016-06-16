@@ -394,7 +394,7 @@ function ready() {
   }
   function deleteFile(req, res) {
     var _id = req.user;
-    var file = req.body.file;
+    var filename = req.body.filename;
     var repo = req.body.repo;
     var user = req.body.user;
     if (_id === 'admin') {
@@ -406,18 +406,21 @@ function ready() {
       if (!validUserRepo(user, repo)) {
         return res.status(400).send({});
       }
-      if (file === undefined ||
-        typeof file !== 'string') {
+      if (filename === undefined ||
+        typeof filename !== 'string') {
         return res.status(400).send({});
       }
       if (_.findIndex(apps, isRepo) === -1) {
         return res.status(404).send({});
       }
       fs.unlink(path.join(rootFolder,
-        user + '-' + repo + '-upload', file), handleUnlink);
+        user + '-' + repo + '-upload', filename), handleUnlink);
       function handleUnlink(unlinkErr) {
-        if (unlinkErr) {
+        if (unlinkErr && unlinkErr.code !== 'ENOENT') {
           return res.status(500).send({});
+        }
+        if (unlinkErr) {
+          return res.status(404).send({});
         }
         res.send({});
       }
