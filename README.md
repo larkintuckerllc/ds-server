@@ -1,4 +1,4 @@
-# DS Server
+# Digital Signage Server
 
 ## Introduction
 
@@ -11,3 +11,6 @@
 ## Contact
 
 ## License
+
+This product is licensed under the license provided
+in the provided LICENSE file.
