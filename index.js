@@ -45,28 +45,34 @@ function handleTmpMkdir(tmpMkdirErr) {
   if (tmpMkdirErr && tmpMkdirErr.code !== 'EEXIST') {
     process.exit(1);
   }
-  db = flatfile(path.join(rootFolder,APP_NAME + '.db'));
-  db.on('open', handleDbOpen);
-  function handleDbOpen() {
-    // NO DOCUMENTED ERROR HANDLING
-    apps = db.get('apps');
-    if (apps === undefined) {
-      apps = [];
-      db.put('apps', apps);
+  fs.mkdir(path.join(rootFolder, 'upload'), handleUploadMkdir);
+  function handleUploadMkdir(uploadMkdirErr) {
+    if (uploadMkdirErr && uploadMkdirErr.code !== 'EEXIST') {
+      process.exit(1);
     }
-    startup = db.get('startup');
-    if (startup === undefined) {
-      writeStartupFile(BLANK_STARTUP, handleInitialWriteFile);
-    } else {
-      ready();
-    }
-    function handleInitialWriteFile(writeStartupFileErr) {
-      if (writeStartupFileErr) {
-        process.exit(1);
+    db = flatfile(path.join(rootFolder,APP_NAME + '.db'));
+    db.on('open', handleDbOpen);
+    function handleDbOpen() {
+      // NO DOCUMENTED ERROR HANDLING
+      apps = db.get('apps');
+      if (apps === undefined) {
+        apps = [];
+        db.put('apps', apps);
       }
-      startup = BLANK_STARTUP;
-      db.put('startup', startup);
-      ready();
+      startup = db.get('startup');
+      if (startup === undefined) {
+        writeStartupFile(BLANK_STARTUP, handleInitialWriteFile);
+      } else {
+        ready();
+      }
+      function handleInitialWriteFile(writeStartupFileErr) {
+        if (writeStartupFileErr) {
+          process.exit(1);
+        }
+        startup = BLANK_STARTUP;
+        db.put('startup', startup);
+        ready();
+      }
     }
   }
 }
@@ -201,25 +207,41 @@ function ready() {
         // jscs: disable
         version = getLatestReleaseRes.tag_name;
         // jscs: enable
-        download(user, repo, version, handleDownload);
+        apps.push({
+          user: user,
+          repo: repo,
+          version: 'installing'
+        });
+        db.put('apps', apps);
+        res.send({});
+        fs.mkdir(path.join(rootFolder,'upload',
+          user + '-' + repo), handleUploadMkdir);
+        function handleUploadMkdir(uploadMkdirErr) {
+          if (uploadMkdirErr) {
+            saveFail();
+            return;
+          }
+          download(user, repo, version, handleDownload);
+        }
         function handleDownload(downloadErr) {
+          var index = _.findIndex(apps, isRepo);
           if (downloadErr) {
-            return res.status(500).send({});
+            saveFail();
+            return;
           }
-          fs.mkdir(path.join(rootFolder,
-            user + '-' + repo + '-upload'), handleUploadMkdir);
-          function handleUploadMkdir(uploadMkdirErr) {
-            if (uploadMkdirErr) {
-              return res.status(500).send({});
-            }
-            apps.push({
-              user: user,
-              repo: repo,
-              version: version
-            });
-            db.put('apps', apps);
-            res.send({});
+          if (index === -1) {
+            return;
           }
+          apps[index].version = version;
+          db.put('apps', apps);
+        }
+        function saveFail() {
+          var index = _.findIndex(apps, isRepo);
+          if (index === -1) {
+            return;
+          }
+          apps[index].version = 'failed';
+          db.put('apps', apps);
         }
       }
       function isRepo(obj) {
@@ -250,7 +272,7 @@ function ready() {
         if (removeErr) {
           return res.status(500).send({});
         }
-        rimraf(path.join(rootFolder, user + '-' + repo + '-upload'),
+        rimraf(path.join(rootFolder, 'upload', user + '-' + repo),
           handleRimRaf);
         function handleRimRaf(rimRafErr) {
           if (rimRafErr) {
@@ -309,19 +331,35 @@ function ready() {
         if (currentVersion === latestVersion) {
           return res.send({});
         }
+        apps[index].version = 'installing';
+        db.put('apps', apps);
         remove(user, repo, handleRemove);
+        res.send({});
         function handleRemove(handleRemoveErr) {
           if (handleRemoveErr) {
-            return res.status(500).send({});
+            saveFail();
+            return;
           }
           download(user, repo, latestVersion, handleDownload);
           function handleDownload(downloadErr) {
+            var index = _.findIndex(apps, isRepo);
             if (downloadErr) {
-              return res.status(500).send({});
+              saveFail();
+              return;
+            }
+            if (index === -1) {
+              return;
             }
             apps[index].version = latestVersion;
             db.put('apps', apps);
-            res.send({});
+          }
+          function saveFail() {
+            index = _.findIndex(apps, isRepo);
+            if (index === -1) {
+              return;
+            }
+            apps[index].version = 'failed';
+            db.put('apps', apps);
           }
         }
       }
@@ -359,7 +397,7 @@ function ready() {
       source = fs.createReadStream(sourcePath);
       source.on('error', handleSourceErr);
       destination = fs.createWriteStream(
-        path.join(rootFolder, user + '-' + repo + '-upload',
+        path.join(rootFolder, upload, user + '-' + repo,
         req.file.originalname));
       destination.on('error', handleDesinationErr);
       destination.on('close', handleDestinationClose);
@@ -413,8 +451,8 @@ function ready() {
       if (_.findIndex(apps, isRepo) === -1) {
         return res.status(404).send({});
       }
-      fs.unlink(path.join(rootFolder,
-        user + '-' + repo + '-upload', filename), handleUnlink);
+      fs.unlink(path.join(rootFolder, upload,
+        user + '-' + repo, filename), handleUnlink);
       function handleUnlink(unlinkErr) {
         if (unlinkErr && unlinkErr.code !== 'ENOENT') {
           return res.status(500).send({});
@@ -446,7 +484,7 @@ function ready() {
         return res.status(404).send({});
       }
       fs.readdir(
-        path.join(rootFolder, user + '-' + repo + '-upload'),
+        path.join(rootFolder, upload, user + '-' + repo),
         handleReadDir);
       function handleReadDir(readDirErr, files) {
         if (readDirErr) {
@@ -549,7 +587,7 @@ function ready() {
           redirectReq.on('error', handleError);
           break;
         default:
-          handleError();
+          downloadCallback(500);
       }
       function save(stream) {
         var tempFile;
@@ -566,15 +604,18 @@ function ready() {
               function handleUnlink(unlinkErr) {
                 if (unlinkErr) {
                   downloadCallback(500);
+                  return;
                 }
                 glob(path.join(rootFolder, user + '-' + repo + '*'),
                   {}, handleGlob);
                 function handleGlob(globErr, files) {
                   if (globErr) {
                     downloadCallback(500);
+                    return;
                   }
                   if (files.length !== 1) {
                     downloadCallback(500);
+                    return;
                   }
                   fs.rename(
                     files[0],
@@ -596,7 +637,7 @@ function ready() {
       }
       function handleRedirectGet(redirectRes) {
         if (redirectRes.statusCode !== 200) {
-          handleError();
+          downloadCallback(500);
         }
         save(redirectRes);
       }
