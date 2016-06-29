@@ -214,7 +214,7 @@ function ready() {
         });
         db.put('apps', apps);
         res.send({});
-        fs.mkdir(path.join(rootFolder,'upload',
+        fs.mkdir(path.join(rootFolder, 'upload',
           user + '-' + repo), handleUploadMkdir);
         function handleUploadMkdir(uploadMkdirErr) {
           if (uploadMkdirErr) {
@@ -372,6 +372,7 @@ function ready() {
     var _id = req.user;
     var repo = req.body.repo;
     var user = req.body.user;
+    var filename = req.body.filename;
     if (_id === 'admin') {
       success();
     } else {
@@ -393,12 +394,16 @@ function ready() {
       if (!req.file) {
         return res.status(404).send({});
       }
+      if (filename !== undefined &&
+        typeof filename !== 'string') {
+        return res.status(400).send({});
+      }
       sourcePath = req.file.path;
       source = fs.createReadStream(sourcePath);
       source.on('error', handleSourceErr);
       destination = fs.createWriteStream(
-        path.join(rootFolder, upload, user + '-' + repo,
-        req.file.originalname));
+        path.join(rootFolder, 'upload', user + '-' + repo,
+        filename !== undefined ? filename : req.file.originalname));
       destination.on('error', handleDesinationErr);
       destination.on('close', handleDestinationClose);
       source.pipe(destination);
@@ -451,7 +456,7 @@ function ready() {
       if (_.findIndex(apps, isRepo) === -1) {
         return res.status(404).send({});
       }
-      fs.unlink(path.join(rootFolder, upload,
+      fs.unlink(path.join(rootFolder, 'upload',
         user + '-' + repo, filename), handleUnlink);
       function handleUnlink(unlinkErr) {
         if (unlinkErr && unlinkErr.code !== 'ENOENT') {
@@ -484,7 +489,7 @@ function ready() {
         return res.status(404).send({});
       }
       fs.readdir(
-        path.join(rootFolder, upload, user + '-' + repo),
+        path.join(rootFolder, 'upload', user + '-' + repo),
         handleReadDir);
       function handleReadDir(readDirErr, files) {
         if (readDirErr) {
