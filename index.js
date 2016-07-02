@@ -42,12 +42,12 @@ rootFolder = config.get('rootfolder');
 secret = config.get('secret');
 fs.mkdir(path.join(rootFolder, 'tmp'), handleTmpMkdir);
 function handleTmpMkdir(tmpMkdirErr) {
-  if (tmpMkdirErr && tmpMkdirErr.code !== 'EEXIST') {
+  if (tmpMkdirErr !== null && tmpMkdirErr.code !== 'EEXIST') {
     process.exit(1);
   }
   fs.mkdir(path.join(rootFolder, 'upload'), handleUploadMkdir);
   function handleUploadMkdir(uploadMkdirErr) {
-    if (uploadMkdirErr && uploadMkdirErr.code !== 'EEXIST') {
+    if (uploadMkdirErr !== null && uploadMkdirErr.code !== 'EEXIST') {
       process.exit(1);
     }
     db = flatfile(path.join(rootFolder,APP_NAME + '.db'));
@@ -66,7 +66,7 @@ function handleTmpMkdir(tmpMkdirErr) {
         ready();
       }
       function handleInitialWriteFile(writeStartupFileErr) {
-        if (writeStartupFileErr) {
+        if (writeStartupFileErr !== null) {
           process.exit(1);
         }
         startup = BLANK_STARTUP;
@@ -201,7 +201,7 @@ function ready() {
       function handleGetLatestRelease(getLatestReleaseErr,
         getLatestReleaseRes) {
         var version;
-        if (getLatestReleaseErr) {
+        if (getLatestReleaseErr !== null) {
           return res.status(getLatestReleaseErr.code).send({});
         }
         // jscs: disable
@@ -217,7 +217,7 @@ function ready() {
         fs.mkdir(path.join(rootFolder, 'upload',
           user + '-' + repo), handleUploadMkdir);
         function handleUploadMkdir(uploadMkdirErr) {
-          if (uploadMkdirErr) {
+          if (uploadMkdirErr !== null) {
             saveFail();
             return;
           }
@@ -225,7 +225,7 @@ function ready() {
         }
         function handleDownload(downloadErr) {
           var index = _.findIndex(apps, isRepo);
-          if (downloadErr) {
+          if (downloadErr !== null) {
             saveFail();
             return;
           }
@@ -269,18 +269,18 @@ function ready() {
       }
       remove(user, repo, handleRemove);
       function handleRemove(removeErr) {
-        if (removeErr) {
+        if (removeErr !== null) {
           return res.status(500).send({});
         }
         rimraf(path.join(rootFolder, 'upload', user + '-' + repo),
           handleRimRaf);
         function handleRimRaf(rimRafErr) {
-          if (rimRafErr) {
+          if (rimRafErr !== null) {
             return res.status(500).send({});
           }
           writeStartupFile(BLANK_STARTUP, handleWriteStartupFile);
           function handleWriteStartupFile(writeStartupFileErr) {
-            if (writeStartupFileErr) {
+            if (writeStartupFileErr !== null) {
               return res.status(500).send({});
             }
             apps.splice(index, 1);
@@ -322,7 +322,7 @@ function ready() {
         getLatestReleaseRes) {
         var currentVersion = apps[index].version;
         var latestVersion;
-        if (getLatestReleaseErr) {
+        if (getLatestReleaseErr !== null) {
           return res.status(getLatestReleaseErr.code).send({});
         }
         // jscs: disable
@@ -336,14 +336,14 @@ function ready() {
         remove(user, repo, handleRemove);
         res.send({});
         function handleRemove(handleRemoveErr) {
-          if (handleRemoveErr) {
+          if (handleRemoveErr !== null) {
             saveFail();
             return;
           }
           download(user, repo, latestVersion, handleDownload);
           function handleDownload(downloadErr) {
             var index = _.findIndex(apps, isRepo);
-            if (downloadErr) {
+            if (downloadErr !== null) {
               saveFail();
               return;
             }
@@ -379,11 +379,8 @@ function ready() {
       return res.status(401).send({});
     }
     function success() {
-      var cancel = false;
-      var destination;
-      var index;
-      var source;
       var sourcePath;
+      var index;
       if (!validUserRepo(user, repo)) {
         return res.status(400).send({});
       }
@@ -399,32 +396,18 @@ function ready() {
         return res.status(400).send({});
       }
       sourcePath = req.file.path;
-      source = fs.createReadStream(sourcePath);
-      source.on('error', handleSourceErr);
-      destination = fs.createWriteStream(
+      copyFile(sourcePath,
         path.join(rootFolder, 'upload', user + '-' + repo,
-        filename !== undefined ? filename : req.file.originalname));
-      destination.on('error', handleDesinationErr);
-      destination.on('close', handleDestinationClose);
-      source.pipe(destination);
-      function handleSourceErr() {
-        if (!cancel) {
-          cancel = true;
+          filename !== undefined ? filename : req.file.originalname),
+        handleCopyFile
+      );
+      function handleCopyFile(copyFileErr) {
+        if (copyFileErr !== null) {
           return res.status(500).send({});
         }
-      }
-      function handleDesinationErr() {
-        if (!cancel) {
-          cancel = true;
-          return res.status(500).send({});
-        }
-      }
-      function handleDestinationClose() {
-        if (!cancel) {
-          fs.unlink(sourcePath, handleUnlink);
-        }
+        fs.unlink(sourcePath, handleUnlink);
         function handleUnlink(unlinkErr) {
-          if (unlinkErr) {
+          if (unlinkErr !== null) {
             return res.status(500).send({});
           }
           res.send({});
@@ -459,10 +442,10 @@ function ready() {
       fs.unlink(path.join(rootFolder, 'upload',
         user + '-' + repo, filename), handleUnlink);
       function handleUnlink(unlinkErr) {
-        if (unlinkErr && unlinkErr.code !== 'ENOENT') {
+        if (unlinkErr !== null && unlinkErr.code !== 'ENOENT') {
           return res.status(500).send({});
         }
-        if (unlinkErr) {
+        if (unlinkErr !== null) {
           return res.status(404).send({});
         }
         res.send({});
@@ -492,7 +475,7 @@ function ready() {
         path.join(rootFolder, 'upload', user + '-' + repo),
         handleReadDir);
       function handleReadDir(readDirErr, files) {
-        if (readDirErr) {
+        if (readDirErr !== null) {
           return res.status(500).send({});
         }
         res.send(files);
@@ -539,7 +522,7 @@ function ready() {
       }
       writeStartupFile(value, handleWriteStartupFile);
       function handleWriteStartupFile(writeStartupFileErr) {
-        if (writeStartupFileErr) {
+        if (writeStartupFileErr !== null) {
           return res.status(500).send({});
         }
         startup = value;
@@ -607,14 +590,14 @@ function ready() {
             function handleDecompress() {
               fs.unlink(tempFileName, handleUnlink);
               function handleUnlink(unlinkErr) {
-                if (unlinkErr) {
+                if (unlinkErr !== null) {
                   downloadCallback(500);
                   return;
                 }
                 glob(path.join(rootFolder, user + '-' + repo + '*'),
                   {}, handleGlob);
                 function handleGlob(globErr, files) {
-                  if (globErr) {
+                  if (globErr !== null) {
                     downloadCallback(500);
                     return;
                   }
@@ -628,10 +611,10 @@ function ready() {
                     handleRename
                   );
                   function handleRename(renameErr) {
-                    if (renameErr) {
+                    if (renameErr !== null) {
                       downloadCallback(500);
                     } else {
-                      downloadCallback();
+                      downloadCallback(null);
                     }
                   }
                 }
@@ -658,7 +641,7 @@ function ready() {
         removeCallback(500);
         return;
       }
-      removeCallback();
+      removeCallback(null);
     }
   }
 }
@@ -670,6 +653,32 @@ function writeStartupFile(value, writeStartupFileCallback) {
       writeStartupFileCallback(500);
       return;
     }
-    writeStartupFileCallback();
+    writeStartupFileCallback(null);
+  }
+}
+function copyFile(sourcePath, destinationPath, copyFileCallback) {
+  var cancel = false;
+  var source = fs.createReadStream(sourcePath);
+  var destination = fs.createWriteStream(destinationPath);
+  source.on('error', handleSourceErr);
+  destination.on('error', handleDestinationErr);
+  destination.on('close', handleDestinationClose);
+  source.pipe(destination);
+  function handleSourceErr() {
+    if (!cancel) {
+      cancel = true;
+      copyFileCallback(500);
+    }
+  }
+  function handleDestinationErr() {
+    if (!cancel) {
+      cancel = true;
+      copyFileCallback(500);
+    }
+  }
+  function handleDestinationClose() {
+    if (!cancel) {
+      copyFileCallback(null);
+    }
   }
 }
