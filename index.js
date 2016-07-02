@@ -71,7 +71,31 @@ function handleTmpMkdir(tmpMkdirErr) {
         }
         startup = BLANK_STARTUP;
         db.put('startup', startup);
-        ready();
+        copyFile(path.join('apps', 'index.html'),
+          path.join(rootFolder, 'index.html'),
+          handleCopyIndexFile);
+        function handleCopyIndexFile(copyIndexFileErr) {
+          if (copyIndexFileErr !== null) {
+            process.exit(1);
+          }
+          copyFile(path.join('apps', 'app.css'),
+            path.join(rootFolder, 'app.css'),
+            handleCopyCssFile);
+          function handleCopyCssFile(copyCssFileErr) {
+            if (copyCssFileErr !== null) {
+              process.exit(1);
+            }
+            copyFile(path.join('apps', 'app.js'),
+              path.join(rootFolder, 'app.js'),
+              handleCopyJsFile);
+            function handleCopyJsFile(copyJsFileErr) {
+              if (copyJsFileErr !== null) {
+                process.exit(1);
+              }
+              ready();
+            }
+          }
+        }
       }
     }
   }
