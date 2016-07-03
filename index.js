@@ -26,6 +26,7 @@ var https = require('https');
 var jwt = require('jwt-simple');
 var LocalStrategy = require('passport-local').Strategy;
 var multer = require('multer');
+var ncp = require('ncp');
 var passport = require('passport');
 var path = require('path');
 var rimraf = require('rimraf');
@@ -36,6 +37,7 @@ var db;
 var rootFolder;
 var secret;
 var startup;
+ncp.limit = 16;
 // INITIALIZE
 adminPassword = config.get('adminpassword');
 rootFolder = config.get('rootfolder');
@@ -73,27 +75,21 @@ function handleTmpMkdir(tmpMkdirErr) {
         db.put('startup', startup);
         copyFile(path.join('apps', 'index.html'),
           path.join(rootFolder, 'index.html'),
-          handleCopyIndexFile);
-        function handleCopyIndexFile(copyIndexFileErr) {
-          if (copyIndexFileErr !== null) {
+          handleCopyFile);
+        function handleCopyFile(copyFileErr) {
+          if (copyFileErr !== null) {
             process.exit(1);
           }
-          copyFile(path.join('apps', 'app.css'),
-            path.join(rootFolder, 'app.css'),
-            handleCopyCssFile);
-          function handleCopyCssFile(copyCssFileErr) {
-            if (copyCssFileErr !== null) {
+          ncp(
+            path.join('apps', 'admin'),
+            path.join(rootFolder, 'admin'),
+            handleNcp
+          );
+          function handleNcp(ncpErr) {
+            if (ncpErr !== null) {
               process.exit(1);
             }
-            copyFile(path.join('apps', 'app.js'),
-              path.join(rootFolder, 'app.js'),
-              handleCopyJsFile);
-            function handleCopyJsFile(copyJsFileErr) {
-              if (copyJsFileErr !== null) {
-                process.exit(1);
-              }
-              ready();
-            }
+            ready();
           }
         }
       }
@@ -123,6 +119,9 @@ function ready() {
   app.post('/api/login/',
     passport.authenticate('local', {session: false}),
     sendToken);
+  app.post('/api/valid/',
+    passport.authenticate('bearer', {session: false}),
+    valid);
   app.post('/api/install/',
     passport.authenticate('bearer', {session: false}),
     install);
@@ -201,6 +200,17 @@ function ready() {
     res.send({
       'token': req.user
     });
+  }
+  function valid(req, res) {
+    var _id = req.user;
+    if (_id === 'admin') {
+      success();
+    } else {
+      return res.status(401).send({});
+    }
+    function success() {
+      res.send({});
+    }
   }
   function install(req, res) {
     var _id = req.user;
