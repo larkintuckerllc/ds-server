@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<!-- THIS PAGE IS THE CONTROL -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>Thr0w Remote Control</title>
+  <link rel="stylesheet" type="text/css" href="../../dist/thr0w-base.css">
+</head>
+<body>
+  <div id="account" style="display: none;">
+    <form id="account__form">
+      <input id="account__form__username" type="text" placeholder="username" />
+      <input id="account__form__password" type="password" placeholder="password" />
+      <button type="submit">Submit</button>
+    </form>
+  </div>
+  <div id="control" style="display: none;">
+    <button id="control__red">Red</button>
+    <button id="control__green">Green</button>
+    <button id="control__blue">Blue</button>
+    <button id="control__logout">Logout</button>
+  </div>
+  <script src="../../dist/thr0w-base.min.js"></script>
+  <script src="control_app.js"></script>
+</body>
+</html>

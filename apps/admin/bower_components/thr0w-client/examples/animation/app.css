@@ -1,0 +1,84 @@
+html, body {
+  margin: 0px;
+  padding: 0px;
+}
+#my_frame {
+  position: relative;
+  overflow: hidden;
+  width: 400px;
+  height: 400px;
+}
+#my_content {
+  position: absolute;
+  width: 1200px;
+  height: 400px;
+}
+/*
+SKY FIXED
+*/
+.sky {
+  position: absolute;
+  z-index: 1;
+  left: 0%;
+  top: 0%;
+  width: 100%;
+  height: 60%;
+  background: #c9dbe9;
+  background: -linear-gradient(top, #c9dbe9 0%, #fff 100%);
+  background: -webkit-linear-gradient(top, #c9dbe9 0%, #fff 100%);
+  background: -moz-linear-gradient(top, #c9dbe9 0%, #fff 100%);
+}
+/*
+LIGHT GREEN HILLS THAT ANIMATE SLOWER
+*/
+.background-far {
+  position: absolute;
+  z-index: 2;
+  left: 0%;
+  top: 20%;
+  width: 100%;
+  height: 80%;
+  overflow: hidden;
+}
+/*
+DARKER GREEN HILLS THAT ANIMATE FASTER
+*/
+.background-near {
+  position: absolute;
+  z-index: 3;
+  left: 0%;
+  top: 30%;
+  width: 100%;
+  height: 70%;
+  overflow: hidden;
+}
+/*
+HILLS SLIGHLY LARGER THAN CONTENT TO AVOID GAPS
+*/
+.hill {
+  position: absolute;
+  top: 0%;
+  left: 0%;
+  width: 101%;
+  height: 100%;
+}
+/*
+HILL1 and HILL2 ARE SAME SHAPE; OFFSET BY WIDTH OF SCREEN
+TO CREATE LOOPING EFFECT
+*/
+#hill1 {
+  left: 0%;
+}
+#hill2 {
+  left: -100%;
+}
+/*
+HILL3 and HILL4 ARE SAME SHAPE; OFFSET BY WIDTH OF SCREEN
+TO CREATE LOOPING EFFECT
+*/
+#hill3 {
+  left: 0%;
+}
+#hill4 {
+  left: -100%;
+}

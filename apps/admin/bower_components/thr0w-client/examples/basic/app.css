@@ -1,0 +1,29 @@
+html, body {
+  margin: 0px;
+  padding: 0px;
+}
+/* 
+FRAME ELEMENT IS WHAT ONE SEES ON A SINGLE SCREEN;
+SIZE IS OFTEN SET TO SIZE OF ENTIRE (SINGLE) SCREEN.
+IN THIS CASE, WE HAVE A 400PX by 400PX SCREEN.
+*/
+#my_frame {
+  position: relative;
+  overflow: hidden;
+  width: 400px;
+  height: 400px;
+}
+/*
+CONTENT ELEMENT IS WHAT ONE SEES ON THE ENTIRE WALL;
+SIZE IS SET TO BE A MULTIPLE OF FRAME ELEMENTS BASED
+ON THE NUMBER AND POSITIONING OF COMPONENT SCREENS.
+IN THIS CASE, WE HAVE A SINGLE ROW OF THREE COLUMNS
+OF SCREENS.
+*/
+#my_content {
+  position: absolute;
+  width: 1200px;
+  height: 400px;
+  background-image: url("image-example-landscape.jpg");
+  background-size: cover;
+}

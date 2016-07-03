@@ -1,0 +1,8 @@
+html, body {
+  margin: 0px;
+  padding: 0px;
+}
+#my_frame {
+  width: 400px;
+  height: 400px;
+}

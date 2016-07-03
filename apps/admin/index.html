@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>Digital Signage Administration</title>
+  <link rel="stylesheet" type="text/css" href="bower_components/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" type="text/css" href="bower_components/ds-client/dist/ds-base.css">
+  <link rel="stylesheet" type="text/css" href="bower_components/thr0w-client/dist/thr0w-base.css">
+  <link rel="stylesheet" type="text/css" href="app.css">
+</head>
+<body>
+  <div class="panel panel-default">
+      <div class="panel-heading">
+        <h3 class="panel-title">Administration</h3>
+      </div>
+    </div>
+    <div class="container-fluid">
+      <div class="row">
+        <div class="col-xs-12">
+        <div id="authorized" style="display: none;">
+          <ul id="authorized__apps">
+          </ul>
+          <button id="authorized__logout" class="btn btn-default">Logout</button>
+        </div>
+      </div>
+    </div>
+  <script src="http://localhost:3001/socket.io/socket.io.js"></script>
+  <script src="bower_components/ds-client/dist/ds-base.js"></script>
+  <script src="bower_components/thr0w-client/dist/thr0w-base.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
