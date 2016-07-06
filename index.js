@@ -1,6 +1,8 @@
 'use strict';
 // STATICS
 var APP_NAME = 'ds-server';
+var ADMIN_APP_USER = 'larkintuckerllc';
+var ADMIN_APP_REPO = 'ds-admin';
 var BLANK_STARTUP = 'about:blank';
 var REDIRECT_BEGIN = [
   '<html>',
@@ -81,15 +83,28 @@ function handleTmpMkdir(tmpMkdirErr) {
             process.exit(1);
           }
           ncp(
-            path.join('apps', 'admin'),
-            path.join(rootFolder, 'admin'),
+            path.join('apps', ADMIN_APP_USER + '-' + ADMIN_APP_REPO),
+            path.join(rootFolder, ADMIN_APP_USER + '-' + ADMIN_APP_REPO),
             handleNcp
           );
           function handleNcp(ncpErr) {
             if (ncpErr !== null) {
               process.exit(1);
             }
-            ready();
+            fs.mkdir(path.join(rootFolder, 'upload',
+              ADMIN_APP_USER + '-' + ADMIN_APP_REPO), handleUploadMkdir);
+            function handleUploadMkdir(uploadMkdirErr) {
+              if (uploadMkdirErr !== null) {
+                process.exit(1);
+              }
+              apps.push({
+                user: ADMIN_APP_USER,
+                repo: ADMIN_APP_REPO,
+                version: '0.0.0'
+              });
+              db.put('apps', apps);
+              ready();
+            }
           }
         }
       }
@@ -300,6 +315,9 @@ function ready() {
       index = _.findIndex(apps, isRepo);
       if (index === -1) {
         return res.status(404).send({});
+      }
+      if (user === ADMIN_APP_USER && repo === ADMIN_APP_REPO) {
+        return res.status(409).send({});
       }
       remove(user, repo, handleRemove);
       function handleRemove(removeErr) {
