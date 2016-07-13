@@ -3,6 +3,8 @@
 var APP_NAME = 'ds-server';
 var ADMIN_APP_USER = 'larkintuckerllc';
 var ADMIN_APP_REPO = 'ds-admin';
+var DS_SERVER_USER = 'larkintuckerllc';
+var DS_SERVER_REPO = 'ds-server';
 var BLANK_STARTUP = 'about:blank';
 var REDIRECT_BEGIN = [
   '<html>',
@@ -39,42 +41,34 @@ var db;
 var rootFolder;
 var secret;
 var startup;
+var dsServerVersion;
 ncp.limit = 16;
-// INITIALIZE
 adminPassword = config.get('adminpassword');
 rootFolder = config.get('rootfolder');
 secret = config.get('secret');
-fs.mkdir(path.join(rootFolder, 'tmp'), handleTmpMkdir);
-function handleTmpMkdir(tmpMkdirErr) {
-  if (tmpMkdirErr !== null && tmpMkdirErr.code !== 'EEXIST') {
-    process.exit(1);
+db = flatfile(path.join(rootFolder, APP_NAME + '.db'));
+db.on('open', handleDbOpen);
+function handleDbOpen() {
+  apps = db.get('apps');
+  if (apps !== undefined) {
+    return ready();
   }
-  fs.mkdir(path.join(rootFolder, 'upload'), handleUploadMkdir);
-  function handleUploadMkdir(uploadMkdirErr) {
-    if (uploadMkdirErr !== null && uploadMkdirErr.code !== 'EEXIST') {
+  // ONE TIME INITIALIZATION
+  fs.mkdir(path.join(rootFolder, 'tmp'), handleTmpMkdir);
+  function handleTmpMkdir(tmpMkdirErr) {
+    if (tmpMkdirErr !== null) {
       process.exit(1);
     }
-    db = flatfile(path.join(rootFolder,APP_NAME + '.db'));
-    db.on('open', handleDbOpen);
-    function handleDbOpen() {
-      // NO DOCUMENTED ERROR HANDLING
-      apps = db.get('apps');
-      if (apps === undefined) {
-        apps = [];
-        db.put('apps', apps);
+    fs.mkdir(path.join(rootFolder, 'upload'), handleUploadMkdir);
+    function handleUploadMkdir(uploadMkdirErr) {
+      if (uploadMkdirErr !== null) {
+        process.exit(1);
       }
-      startup = db.get('startup');
-      if (startup === undefined) {
-        writeStartupFile(BLANK_STARTUP, handleInitialWriteFile);
-      } else {
-        ready();
-      }
-      function handleInitialWriteFile(writeStartupFileErr) {
+      writeStartupFile(BLANK_STARTUP, handleWriteStartupFile);
+      function handleWriteStartupFile(writeStartupFileErr) {
         if (writeStartupFileErr !== null) {
           process.exit(1);
         }
-        startup = BLANK_STARTUP;
-        db.put('startup', startup);
         copyFile(path.join('apps', 'index.html'),
           path.join(rootFolder, 'index.html'),
           handleCopyFile);
@@ -92,17 +86,20 @@ function handleTmpMkdir(tmpMkdirErr) {
               process.exit(1);
             }
             fs.mkdir(path.join(rootFolder, 'upload',
-              ADMIN_APP_USER + '-' + ADMIN_APP_REPO), handleUploadMkdir);
-            function handleUploadMkdir(uploadMkdirErr) {
-              if (uploadMkdirErr !== null) {
+              ADMIN_APP_USER + '-' + ADMIN_APP_REPO),
+                handleAdminAppUploadMkdir);
+            function handleAdminAppUploadMkdir(adminAppUploadMkdirErr) {
+              if (adminAppUploadMkdirErr !== null) {
                 process.exit(1);
               }
+              apps = [];
               apps.push({
                 user: ADMIN_APP_USER,
                 repo: ADMIN_APP_REPO,
                 version: '0.0.0'
               });
               db.put('apps', apps);
+              db.put('startup', BLANK_STARTUP);
               ready();
             }
           }
@@ -111,7 +108,6 @@ function handleTmpMkdir(tmpMkdirErr) {
     }
   }
 }
-// EXECUTION
 function ready() {
   var app;
   var github = new GitHubApi({
@@ -121,6 +117,9 @@ function ready() {
       'User-Agent': APP_NAME
     }
   });
+  startup = db.get('startup');
+  dsServerVersion =
+    JSON.parse(fs.readFileSync('package.json', 'utf8')).version;
   // APP SETUP
   app = express();
   app.use(allowCrossDomain);
@@ -148,7 +147,7 @@ function ready() {
     update);
   app.post('/api/upload/',
     passport.authenticate('bearer', {session: false}),
-    multer({dest: path.join(rootFolder,'tmp')}).single('file'),
+    multer({dest: path.join(rootFolder, 'tmp')}).single('file'),
     upload);
   app.post('/api/delete/',
     passport.authenticate('bearer', {session: false}),
@@ -243,54 +242,67 @@ function ready() {
       if (_.findIndex(apps, isRepo) !== -1) {
         return res.status(409).send({});
       }
-      github.repos.getLatestRelease(
-        {user: user, repo: repo},
-        handleGetLatestRelease
-      );
-      function handleGetLatestRelease(getLatestReleaseErr,
-        getLatestReleaseRes) {
-        var version;
-        if (getLatestReleaseErr !== null) {
-          return res.status(getLatestReleaseErr.code).send({});
+      currentDsServerVersion(handleCurrentDsServerVersion);
+      function handleCurrentDsServerVersion(currentDsServerVersionErr,
+        current) {
+        if (currentDsServerVersionErr) {
+          return res.status(503).send({});
         }
-        // jscs: disable
-        version = getLatestReleaseRes.tag_name;
-        // jscs: enable
-        apps.push({
-          user: user,
-          repo: repo,
-          version: 'installing'
-        });
-        db.put('apps', apps);
-        res.send({});
-        fs.mkdir(path.join(rootFolder, 'upload',
-          user + '-' + repo), handleUploadMkdir);
-        function handleUploadMkdir(uploadMkdirErr) {
-          if (uploadMkdirErr !== null) {
-            saveFail();
-            return;
-          }
-          download(user, repo, version, handleDownload);
+        if (!current) {
+          return res.status(500).send({});
         }
-        function handleDownload(downloadErr) {
-          var index = _.findIndex(apps, isRepo);
-          if (downloadErr !== null) {
-            saveFail();
-            return;
+        github.repos.getLatestRelease(
+          {user: user, repo: repo},
+          handleGetLatestRelease
+        );
+        function handleGetLatestRelease(getLatestReleaseErr,
+          getLatestReleaseRes) {
+          var version;
+          var code;
+          if (getLatestReleaseErr !== null) {
+            code = getLatestReleaseErr.code;
+            code = code === 500 ? 503 : code;
+            return res.status(code).send({});
           }
-          if (index === -1) {
-            return;
-          }
-          apps[index].version = version;
+          // jscs: disable
+          version = getLatestReleaseRes.tag_name;
+          // jscs: enable
+          apps.push({
+            user: user,
+            repo: repo,
+            version: 'installing'
+          });
           db.put('apps', apps);
-        }
-        function saveFail() {
-          var index = _.findIndex(apps, isRepo);
-          if (index === -1) {
-            return;
+          res.send({});
+          fs.mkdir(path.join(rootFolder, 'upload',
+            user + '-' + repo), handleUploadMkdir);
+          function handleUploadMkdir(uploadMkdirErr) {
+            if (uploadMkdirErr !== null) {
+              saveFail();
+              return;
+            }
+            download(user, repo, version, handleDownload);
           }
-          apps[index].version = 'failed';
-          db.put('apps', apps);
+          function handleDownload(downloadErr) {
+            var index = _.findIndex(apps, isRepo);
+            if (downloadErr !== null) {
+              saveFail();
+              return;
+            }
+            if (index === -1) {
+              return;
+            }
+            apps[index].version = version;
+            db.put('apps', apps);
+          }
+          function saveFail() {
+            var index = _.findIndex(apps, isRepo);
+            if (index === -1) {
+              return;
+            }
+            apps[index].version = 'failed';
+            db.put('apps', apps);
+          }
         }
       }
       function isRepo(obj) {
@@ -366,52 +378,65 @@ function ready() {
       if (index === -1) {
         return res.status(404).send({});
       }
-      github.repos.getLatestRelease(
-        {user: user, repo: repo},
-        handleGetLatestRelease
-      );
-      function handleGetLatestRelease(getLatestReleaseErr,
-        getLatestReleaseRes) {
-        var currentVersion = apps[index].version;
-        var latestVersion;
-        if (getLatestReleaseErr !== null) {
-          return res.status(getLatestReleaseErr.code).send({});
+      currentDsServerVersion(handleCurrentDsServerVersion);
+      function handleCurrentDsServerVersion(currentDsServerVersionErr,
+        current) {
+        if (currentDsServerVersionErr) {
+          return res.status(503).send({});
         }
-        // jscs: disable
-        latestVersion = getLatestReleaseRes.tag_name;
-        // jscs: enable
-        if (currentVersion === latestVersion) {
-          return res.send({});
+        if (!current) {
+          return res.status(500).send({});
         }
-        apps[index].version = 'installing';
-        db.put('apps', apps);
-        remove(user, repo, handleRemove);
-        res.send({});
-        function handleRemove(handleRemoveErr) {
-          if (handleRemoveErr !== null) {
-            saveFail();
-            return;
+        github.repos.getLatestRelease(
+          {user: user, repo: repo},
+          handleGetLatestRelease
+        );
+        function handleGetLatestRelease(getLatestReleaseErr,
+          getLatestReleaseRes) {
+          var currentVersion = apps[index].version;
+          var latestVersion;
+          var code;
+          if (getLatestReleaseErr !== null) {
+            code = getLatestReleaseErr.code;
+            code = code === 500 ? 503 : code;
+            return res.status(code).send({});
           }
-          download(user, repo, latestVersion, handleDownload);
-          function handleDownload(downloadErr) {
-            var index = _.findIndex(apps, isRepo);
-            if (downloadErr !== null) {
+          // jscs: disable
+          latestVersion = getLatestReleaseRes.tag_name;
+          // jscs: enable
+          if (currentVersion === latestVersion) {
+            return res.send({});
+          }
+          apps[index].version = 'installing';
+          db.put('apps', apps);
+          remove(user, repo, handleRemove);
+          res.send({});
+          function handleRemove(handleRemoveErr) {
+            if (handleRemoveErr !== null) {
               saveFail();
               return;
             }
-            if (index === -1) {
-              return;
+            download(user, repo, latestVersion, handleDownload);
+            function handleDownload(downloadErr) {
+              var index = _.findIndex(apps, isRepo);
+              if (downloadErr !== null) {
+                saveFail();
+                return;
+              }
+              if (index === -1) {
+                return;
+              }
+              apps[index].version = latestVersion;
+              db.put('apps', apps);
             }
-            apps[index].version = latestVersion;
-            db.put('apps', apps);
-          }
-          function saveFail() {
-            index = _.findIndex(apps, isRepo);
-            if (index === -1) {
-              return;
+            function saveFail() {
+              index = _.findIndex(apps, isRepo);
+              if (index === -1) {
+                return;
+              }
+              apps[index].version = 'failed';
+              db.put('apps', apps);
             }
-            apps[index].version = 'failed';
-            db.put('apps', apps);
           }
         }
       }
@@ -659,7 +684,7 @@ function ready() {
                   }
                   fs.rename(
                     files[0],
-                    path.join(rootFolder,user + '-' + repo),
+                    path.join(rootFolder, user + '-' + repo),
                     handleRename
                   );
                   function handleRename(renameErr) {
@@ -694,6 +719,22 @@ function ready() {
         return;
       }
       removeCallback(null);
+    }
+  }
+  function currentDsServerVersion(currentDsServerVersionCallback) {
+    github.repos.getLatestRelease(
+      {user: DS_SERVER_USER, repo: DS_SERVER_REPO},
+      handleGetLatestRelease
+    );
+    function handleGetLatestRelease(getLatestReleaseErr,
+      getLatestReleaseRes) {
+      if (getLatestReleaseErr !== null) {
+        return currentDsServerVersionCallback(503, null);
+      }
+      // jscs: disable
+      currentDsServerVersionCallback(null,
+        getLatestReleaseRes.tag_name === dsServerVersion);
+      // jscs: enable
     }
   }
 }
