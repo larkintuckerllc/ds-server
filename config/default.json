@@ -1,5 +1,6 @@
 {
   "secret": "changeme",
   "adminpassword": "changeme",
-  "rootfolder": "changeme"
+  "rootfolder": "changeme",
+  "thr0wServerFolder": "changeme"
 }
