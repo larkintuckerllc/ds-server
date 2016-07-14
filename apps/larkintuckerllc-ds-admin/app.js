@@ -2,12 +2,12 @@
   'use strict';
   var ADMIN_USER = 'larkintuckerllc';
   var ADMIN_REPO = 'ds-admin';
-  // var BASE = 'http://localhost'; // DEV
-  var BASE = 'http://192.168.1.2'; // PROD
   var ds = window.ds;
   document.addEventListener('DOMContentLoaded', ready);
   function ready() {
-    ds.setBase(BASE);
+    var base = window.location.protocol + '//' +
+      window.location.hostname;
+    ds.setBase(base);
     ds.addAdminTools(document.body, handleDsLogin);
     function handleDsLogin() {
       var dsToken = ds.getToken();
@@ -67,7 +67,7 @@
           }
           function list(callback) {
             var xmlhttp = new XMLHttpRequest();
-            xmlhttp.open('POST', BASE + ':3010/api/list', true);
+            xmlhttp.open('POST', base + ':3010/api/list', true);
             xmlhttp.setRequestHeader('Authorization',
               'bearer ' + dsToken);
             xmlhttp.setRequestHeader('Content-type',
@@ -94,7 +94,7 @@
       }
       function update(callback) {
         var xmlhttp = new XMLHttpRequest();
-        xmlhttp.open('POST', BASE + ':3010/api/update', true);
+        xmlhttp.open('POST', base + ':3010/api/update', true);
         xmlhttp.setRequestHeader('Authorization',
           'bearer ' + dsToken);
         xmlhttp.setRequestHeader('Content-type',
