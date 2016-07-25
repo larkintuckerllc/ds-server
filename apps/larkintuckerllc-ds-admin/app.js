@@ -38,11 +38,10 @@
           updateProgressInterval = window.setInterval(updateProgress, 1000);
           function updateProgress() {
             progressCount++;
-            if (progressCount === 10) {
+            if (progressCount === 20) {
               failed();
               return;
             }
-            authorizedProgressBarEl.style.width =  progressCount * 10 + '%';
             list(handleList);
           }
           function handleList(listErr, apps) {
