@@ -36,7 +36,9 @@ var ncp = require('ncp');
 var passport = require('passport');
 var path = require('path');
 var rimraf = require('rimraf');
+var mandrill = require('mandrill-api/mandrill');
 // VARIABLES
+var mandrillClient = null;
 var adminPassword;
 var apps;
 var db;
@@ -51,6 +53,11 @@ adminPassword = config.get('adminpassword');
 rootFolder = config.get('rootfolder');
 thr0wServerFolder = config.get('thr0wServerFolder');
 secret = config.get('secret');
+if (config.has('mandrillApiKey')) {
+  mandrillClient = new mandrill.Mandrill(
+    config.get('mandrillApiKey')
+  );
+}
 db = flatfile(path.join(rootFolder, APP_NAME + '.db'));
 db.on('open', handleDbOpen);
 function handleDbOpen() {
@@ -136,7 +143,7 @@ function ready() {
   app = express();
   app.use(allowCrossDomain);
   app.use(noCache);
-  app.use(require('body-parser').json());
+  app.use(require('body-parser').json({limit: '50mb'}));
   app.use(require('body-parser').urlencoded({extended: true}));
   passport.use(new LocalStrategy(localStrategyVerify));
   passport.use(new BearerStrategy(bearerStrategyVerify));
@@ -179,6 +186,9 @@ function ready() {
   app.post('/api/startup/',
     passport.authenticate('bearer', {session: false}),
     setStartup);
+  app.post('/api/mail/',
+    passport.authenticate('bearer', {session: false}),
+    mail);
   // START
   app.listen(3010, listen);
   function allowCrossDomain(req, res, next) {
@@ -654,6 +664,74 @@ function ready() {
         startup = value;
         db.put('startup', startup);
         res.send({});
+      }
+    }
+  }
+  function mail(req, res) {
+    var _id = req.user;
+    if (_id === 'admin') {
+      success();
+    } else {
+      return res.status(401).send({});
+    }
+    function success() {
+      if (mandrillClient === null) {
+        return res.status(500).send({});
+      }
+      // TODO: SETUP FROM EMAIL AND NAME IN CONFIG
+      // TODO: GET EMAIL DETAIL FROM REQUEST
+      var html = req.body.html;
+      var text = req.body.text;
+      var subject = req.body.subject;
+      var to = req.body.to;
+      var attachments = req.body.attachments;
+      if (html === undefined ||
+        typeof html !== 'string') {
+        return res.status(400).send({});
+      }
+      if (text === undefined ||
+        typeof text !== 'string') {
+        return res.status(400).send({});
+      }
+      if (subject === undefined ||
+        typeof subject !== 'string') {
+        return res.status(400).send({});
+      }
+      if (!Array.isArray(to)) {
+        return res.status(400).send({});
+      }
+      if (attachments !== undefined && !Array.isArray(attachments)) {
+        return res.status(400).send({});
+      }
+      var message = {
+        html: html,
+        text: text,
+        subject: subject,
+        'from_email': 'john@larkintuckerllc.com',
+        'from_name': 'john@larkintuckerllc.com',
+        to: to,
+        headers: {
+          'Reply-To': 'john@larkintuckerllc.com'
+        }
+      };
+      if (attachments !== undefined) {
+        message.attachments = attachments;
+      }
+      mandrillClient.messages.send(
+        {
+          message: message,
+          async: false,
+          'ip_pool': 'Main Pool', // DUMMNY NAME
+          'send_at': '2016-01-01 00:00:00' // DUMMY PAST
+        },
+        success,
+        failed
+      );
+      function success() {
+        res.send({});
+      }
+      function failed(e) {
+        return res.status(500).send({});
       }
     }
   }

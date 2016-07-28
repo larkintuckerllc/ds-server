@@ -2,5 +2,6 @@
   "secret": "changeme",
   "adminpassword": "changeme",
   "rootfolder": "changeme",
-  "thr0wServerFolder": "changeme"
+  "thr0wServerFolder": "changeme",
+  "mandrillApiKey": "optional"
 }
